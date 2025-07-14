@@ -1,12 +1,26 @@
-# PostgreSQL DBRE/DBA ハンズオン完全ガイド
+# DB実践編：PostgreSQL
 
-_未経験からDBRE/DBAに明日から挑戦できる実践的トレーニング_
+## 概要
 
-## 📖 このハンズオンについて
-
-本ハンズオンは、**MySQL版ハンズオン**の姉妹版として、PostgreSQLに特化したDBRE/DBAスキルの習得を目標としています。
+このドキュメントは、PostgreSQLの本格的な運用・管理スキルを体系的に身につけるためのハンズオンガイドです。**「なぜMVCCが重要なのか？」「どのようにJSONBを効率的に検索するか？」**といった実際の運用で直面する課題を、理論的背景とともに実践的に解決する能力を養います。
 
 > **前提知識**: [MySQL版ハンズオン](./mysql.md)で学習した基本的なデータベース概念、Terraform、k6の使い方は理解済みとします。
+
+**なぜPostgreSQL運用スキルが重要なのか？**
+
+- **先進的なアーキテクチャ**: MVCCによる高い並行性とパフォーマンス
+- **豊富なデータ型**: JSON、配列、範囲型等による柔軟なデータ表現
+- **拡張性**: 拡張機能による無限の可能性とカスタマイズ性
+- **オープンソースの信頼性**: エンタープライズレベルの安定性と継続的な進化
+
+**学習目標:**
+
+- PostgreSQL 15の内部アーキテクチャの理解と実践的運用・管理スキル
+- MVCC、VACUUM、WALの理論的背景と実践的活用
+- 多様なインデックス種類とデータ型の効果的な使い分け
+- パーティショニングとクエリ最適化による大規模データの効率的処理
+- 拡張機能エコシステムの活用と監視・運用の体系的アプローチ
+- マイグレーションとバージョンアップの安全な実践
 
 **PostgreSQL特有の学習内容:**
 
@@ -18,7 +32,51 @@ _未経験からDBRE/DBAに明日から挑戦できる実践的トレーニン�
 - 拡張機能エコシステム（PostGIS、pg_stat_statements等）
 - 全文検索機能
 
-## 🛠 環境構築
+## 🛠 必要な環境・ツール
+
+### 必須ツール
+
+- **Google Cloud Platform アカウント**（無料クレジット利用可）
+- **Terraform** >= 1.0
+- **Git**
+- **k6** (負荷テストツール)
+- **Vim** (エディタ)
+- **PostgreSQL Client** (pgcli推奨)
+
+### インストール手順
+
+```bash
+# Terraform のインストール (macOS)
+brew install terraform
+
+# k6 のインストール
+brew install k6
+
+# Google Cloud SDK のインストール
+curl https://sdk.cloud.google.com | bash
+exec -l $SHELL
+gcloud init
+
+# PostgreSQL Client のインストール
+brew install postgresql
+pip3 install pgcli
+```
+
+### Google Cloud プロジェクトの準備
+
+```bash
+# プロジェクトの作成
+gcloud projects create postgresql-dbre-training-[YOUR-ID]
+gcloud config set project postgresql-dbre-training-[YOUR-ID]
+
+# 必要なAPIの有効化
+gcloud services enable compute.googleapis.com
+gcloud services enable sqladmin.googleapis.com
+gcloud services enable monitoring.googleapis.com
+gcloud services enable logging.googleapis.com
+```
+
+## 🏗 環境構築
 
 ### 基本環境準備
 
@@ -159,7 +217,11 @@ echo "PostgreSQL setup completed" >> /var/log/startup-script.log
 
 ## 📚 第1章: PostgreSQL基礎とアーキテクチャ
 
-### 1.1 PostgreSQLの特徴とMySQLとの根本的違い
+### 1.1 なぜPostgreSQLのアーキテクチャが革新的なのか？
+
+PostgreSQLのアーキテクチャを理解する上で、**「なぜMVCCが重要なのか？」**という疑問に答えることが重要です。従来のロックベースとは根本的に異なるアプローチを採用しているからです。
+
+### 1.2 PostgreSQLの特徴とMySQLとの根本的違い
 
 #### MVCC（Multi-Version Concurrency Control）
 
@@ -309,7 +371,11 @@ ON room_reservations USING brin (created_at);
 
 ## 🏗 第2章: PostgreSQL特化データベース設計
 
-### 2.1 拡張機能の活用
+### 2.1 なぜPostgreSQLの拡張機能が強力なのか？
+
+**「どのようにして単一のデータベースで多様な要求に応えるか？」**という疑問に対する答えが、PostgreSQLの拡張機能エコシステムです。
+
+### 2.2 拡張機能の活用
 
 PostgreSQLの真価は豊富な拡張機能にあります。
 
@@ -327,7 +393,7 @@ CREATE EXTENSION IF NOT EXISTS "pgstattuple";         -- テーブル統計
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";             -- 類似検索
 ```
 
-### 2.2 PostgreSQL活用テーブル設計
+### 2.3 PostgreSQL活用テーブル設計
 
 ```sql
 -- 部屋テーブル（JSONB、ENUM、幾何型活用）
@@ -431,7 +497,7 @@ CREATE TABLE reviews (
 );
 ```
 
-### 2.3 PostgreSQL特化インデックス戦略
+### 2.4 PostgreSQL特化インデックス戦略
 
 ```sql
 -- 1. 基本的なB-treeインデックス
@@ -492,7 +558,7 @@ ON room_reservations USING brin (created_at);
 -- 同じ部屋の期間重複を自動的に防ぐ
 ```
 
-### 2.4 トリガーによる自動化
+### 2.5 トリガーによる自動化
 
 ```sql
 -- 更新時刻自動更新トリガー
@@ -548,7 +614,11 @@ CREATE TRIGGER update_review_search_vector
 
 ## 🔍 第3章: PostgreSQL パフォーマンス分析
 
-### 3.1 pg_stat_statements による詳細分析
+### 3.1 なぜPostgreSQLの分析ツールが優秀なのか？
+
+**「どのようにして正確な原因を特定するか？」**という疑問に対する答えが、PostgreSQLの統計情報収集機能です。MySQLのPerformance Schemaを超越した詳細な分析が可能です。
+
+### 3.2 pg_stat_statements による詳細分析
 
 PostgreSQLの`pg_stat_statements`は、MySQL の Performance Schema 以上の詳細な分析が可能です。
 
@@ -613,7 +683,7 @@ ORDER BY temp_blks_written DESC
 LIMIT 10;
 ```
 
-### 3.2 PostgreSQL特有の分析クエリ
+### 3.3 PostgreSQL特有の分析クエリ
 
 ```sql
 -- 現在のアクティビティ詳細
@@ -672,7 +742,7 @@ WHERE idx_scan = 0
 ORDER BY pg_relation_size(indexrelid) DESC;
 ```
 
-### 3.3 バッファキャッシュ分析
+### 3.4 バッファキャッシュ分析
 
 ```sql
 -- バッファキャッシュの使用状況
@@ -703,7 +773,11 @@ ORDER BY cache_hit_percent ASC;
 
 ## ⚡ 第4章: EXPLAIN分析とクエリ最適化
 
-### 4.1 PostgreSQL EXPLAIN の詳細分析
+### 4.1 なぜPostgreSQLのEXPLAINが強力なのか？
+
+**「どのようにして最適な実行計画を作成するか？」**という疑問に対する答えが、PostgreSQLの高度なクエリオプティマイザーです。MySQLを超える詳細な分析情報を提供します。
+
+### 4.2 PostgreSQL EXPLAIN の詳細分析
 
 PostgreSQLのEXPLAINはMySQLより詳細な情報を提供します。
 
@@ -723,7 +797,7 @@ JOIN rooms r ON rr.room_id = r.id
 WHERE rr.guest_id = 1000;
 ```
 
-### 4.2 PostgreSQL特有のクエリ最適化
+### 4.3 PostgreSQL特有のクエリ最適化
 
 #### JSONB クエリの最適化
 
@@ -814,7 +888,7 @@ SELECT * FROM room_reservations
 WHERE stay_period @> '2024-12-22'::timestamptz;
 ```
 
-### 4.3 パーティション活用最適化
+### 4.4 パーティション活用最適化
 
 ```sql
 -- パーティションプルーニング確認
@@ -834,9 +908,13 @@ WHERE created_at >= '2024-06-01';
 
 ## 📊 第5章: PostgreSQL負荷テスト
 
+### 5.1 なぜPostgreSQLの負荷テストが重要なのか？
+
+**「どのようにして実際の負荷に耐えられるか？」**という疑問に対する答えが、PostgreSQL特有の機能を活用した負荷テストです。JSONB、配列、範囲型などの高度な機能を含めた総合的な検証が必要です。
+
 > **基本的なk6設定**: MySQL版と同様のため、PostgreSQL特有の部分のみ記載
 
-### 5.1 PostgreSQL特化負荷テストスクリプト
+### 5.2 PostgreSQL特化負荷テストスクリプト
 
 ```javascript
 // postgresql-load-test.js
@@ -921,7 +999,7 @@ export function teardown() {
 }
 ```
 
-### 5.2 JSONB vs JSON パフォーマンス比較
+### 5.3 JSONB vs JSON パフォーマンス比較
 
 ```javascript
 // jsonb-vs-json-test.js
@@ -985,9 +1063,13 @@ export default function () {
 
 ## 📈 第6章: PostgreSQL監視とトラブルシューティング
 
+### 6.1 なぜPostgreSQLの監視が複雑なのか？
+
+**「どのようにして先手を打った対策を講じるか？」**という疑問に対する答えが、PostgreSQLの包括的な監視戦略です。MVCC、VACUUM、WALなどの特有の仕組みを理解した監視が必要です。
+
 > **基本的な監視概念**: MySQL版と共通のため、PostgreSQL特有の監視項目に焦点
 
-### 6.1 PostgreSQL特有の監視項目
+### 6.2 PostgreSQL特有の監視項目
 
 ```sql
 -- 1. WAL（Write-Ahead Logging）統計
@@ -1036,7 +1118,7 @@ SELECT
 FROM pg_extension;
 ```
 
-### 6.2 VACUUM とAUTOVACUUM の監視
+### 6.3 VACUUM とAUTOVACUUM の監視
 
 ```sql
 -- VACUUM進行状況監視
@@ -1075,7 +1157,7 @@ WHERE n_dead_tup > 0
 ORDER BY dead_ratio DESC;
 ```
 
-### 6.3 緊急時対応プレイブック（PostgreSQL版）
+### 6.4 緊急時対応プレイブック（PostgreSQL版）
 
 ```bash
 #!/bin/bash
@@ -1159,7 +1241,11 @@ echo "=== Emergency Check Completed ==="
 
 ## 🔄 第7章: PostgreSQLマイグレーションとバージョンアップ
 
-### 7.1 PostgreSQL マイナーバージョンアップ
+### 7.1 なぜPostgreSQLのマイグレーションが重要なのか？
+
+**「どのようにして安全に移行・更新するか？」**という疑問に対する答えが、体系的なマイグレーション戦略です。PostgreSQLの拡張機能と高度な機能を活用した移行手法が必要です。
+
+### 7.2 PostgreSQL マイナーバージョンアップ
 
 ```bash
 # Terraformでのバージョンアップ（15.4 → 15.5等）
@@ -1180,7 +1266,7 @@ resource "google_sql_database_instance" "postgres_instance" {
 }
 ```
 
-### 7.2 PostgreSQL メジャーバージョンアップ（15 → 16）
+### 7.3 PostgreSQL メジャーバージョンアップ（15 → 16）
 
 ```sql
 -- アップグレード前チェック
@@ -1198,7 +1284,7 @@ FROM pg_extension;
 ANALYZE;
 ```
 
-### 7.3 MySQL → PostgreSQL マイグレーション
+### 7.4 MySQL → PostgreSQL マイグレーション
 
 #### データ型マッピング
 
@@ -1295,7 +1381,7 @@ if __name__ == "__main__":
     migrate_data_with_transformation()
 ```
 
-### 7.4 NoSQL → PostgreSQL マイグレーション
+### 7.5 NoSQL → PostgreSQL マイグレーション
 
 ```python
 # mongodb_to_postgresql.py
@@ -1350,7 +1436,11 @@ def migrate_mongodb_documents():
 
 ## 🎯 第8章: PostgreSQL実践課題
 
-### 8.1 実践課題1: JSONB検索最適化
+### 8.1 なぜ実践課題が学習に重要なのか？
+
+**「どのようにして理論を実践に結び付けるか？」**という疑問に対する答えが、実際のシナリオベースの課題です。PostgreSQLの高度な機能を組み合わせた実践的な問題解決能力を養います。
+
+### 8.2 実践課題1: JSONB検索最適化
 
 **シナリオ**: ゲストプロファイルのJSONB検索が遅い
 
@@ -1382,7 +1472,7 @@ CREATE INDEX idx_profile_gin ON guests USING gin (profile);
 */
 ```
 
-### 8.2 実践課題2: パーティション戦略設計
+### 8.3 実践課題2: パーティション戦略設計
 
 **シナリオ**: 予約テーブルが10億件になりパフォーマンスが劣化
 
@@ -1401,7 +1491,7 @@ CREATE INDEX idx_profile_gin ON guests USING gin (profile);
 -- - 過去データのアーカイブ戦略
 ```
 
-### 8.3 実践課題3: 全文検索システム構築
+### 8.4 実践課題3: 全文検索システム構築
 
 ```sql
 -- レビューテーブルに多言語全文検索を実装
@@ -1415,7 +1505,7 @@ CREATE INDEX idx_profile_gin ON guests USING gin (profile);
 -- ヒント: pg_trgm, 複数言語辞書, ts_rank
 ```
 
-### 8.4 PostgreSQL DBA スキルチェックリスト
+### 8.5 PostgreSQL DBA スキルチェックリスト
 
 #### 基礎レベル ✅
 

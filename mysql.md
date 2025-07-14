@@ -1,10 +1,11 @@
-# MySQL実践編：エンタープライズ環境での運用・管理技術
+# DB実践編：MySQL
 
 ## 概要
 
 このドキュメントは、MySQLの本格的な運用・管理スキルを体系的に身につけるためのハンズオンガイドです。**「なぜこのクエリは遅いのか？」「どのようにスケールさせるべきか？」**といった実際の運用で直面する課題を、理論的背景とともに実践的に解決する能力を養います。
 
 **なぜMySQL運用スキルが重要なのか？**
+
 - **システムの生命線**: データベースの性能がシステム全体の性能を左右する
 - **可用性の確保**: 障害対応とパフォーマンス問題の迅速な解決が必要
 - **スケーラビリティの実現**: 増大するデータとトラフィックに対応する設計判断
@@ -65,6 +66,7 @@ gcloud services enable logging.googleapis.com
 データベースのパフォーマンスを理解する上で、インデックスの仕組みを深く理解することは不可欠です。**「なぜこのクエリは遅いのか？」**という質問に答えるためには、データがどのように格納され、検索されるかを知る必要があります。
 
 **インデックスなしでのデータ検索：**
+
 ```
 SELECT * FROM users WHERE user_id = 12345;
 
@@ -84,6 +86,7 @@ I/O回数: 全データページ（例：10,000ページ = 10,000回のI/O）
 ```
 
 **インデックスありでのデータ検索：**
+
 ```
 SELECT * FROM users WHERE user_id = 12345;
 
@@ -100,6 +103,7 @@ I/O回数: 3-4回（データ量によらず一定）
 ```
 
 **性能差の実例：**
+
 - 100万行のテーブルの場合
 - インデックスなし：平均50万回のレコード比較
 - インデックスあり：平均20回のレコード比較（2,500倍高速）
@@ -111,6 +115,7 @@ I/O回数: 3-4回（データ量によらず一定）
 従来の二分探索木では、データベースに最適化されていない問題がありました：
 
 **二分探索木の問題点：**
+
 ```
 二分探索木（各ノード2分岐）:
         50
@@ -129,6 +134,7 @@ I/O回数: 3-4回（データ量によらず一定）
 ```
 
 **B+木の改善点：**
+
 ```
 B+木（各ノード多分岐、例：100分岐）:
 ルートノード:
@@ -171,6 +177,7 @@ MySQLのB+木構造（例：1000万レコード）:
 ```
 
 **B+木の特徴：**
+
 1. **完全平衡木**: すべてのリーフノードが同じ深さにある
 2. **高い分岐度**: 1ページ（16KB）に多くのキーを格納
 3. **効率的な範囲検索**: リーフノード間の連結により実現
@@ -286,7 +293,7 @@ SELECT name, email FROM users WHERE email = 'test@example.com';
 │ status = 'suspended':     100行（0.01%）             │
 └─────────────────────────────────────────────────────┘
 
-WHERE status = 'suspended' 
+WHERE status = 'suspended'
 → 全体の0.01%のみ取得、インデックスが非常に効果的
 
 WHERE status = 'active'
@@ -294,6 +301,7 @@ WHERE status = 'active'
 ```
 
 **MySQLの最適化：**
+
 - オプティマイザーがカーディナリティと分布を考慮
 - `ANALYZE TABLE`で統計情報を更新
 - 必要に応じてインデックスヒントを使用
@@ -865,8 +873,8 @@ SELECT * FROM large_table WHERE non_indexed_column = 'value';
 -- → フルテーブルスキャン
 
 -- パターン2: 非効率なJOIN
-SELECT * FROM table1 t1 
-JOIN table2 t2 ON t1.column = t2.column 
+SELECT * FROM table1 t1
+JOIN table2 t2 ON t1.column = t2.column
 WHERE t1.date > '2024-01-01';
 -- → JOINの順序が最適化されていない
 
@@ -1022,10 +1030,10 @@ EXPLAIN ANALYZE SELECT * FROM room_reservations WHERE guest_id = 1000;
 
 #### 5.2.1 重要項目の理論的理解
 
-| 項目         | 意味                   | 重要度 | 理論的背景                          |
-| ------------ | ---------------------- | ------ | ----------------------------------- |
-| **type**     | アクセスタイプ         | ⭐⭐⭐ | データ取得の効率性を示す最重要指標   |
-| **rows**     | 検索対象行数           | ⭐⭐⭐ | I/Oコストの予測値                   |
+| 項目         | 意味                   | 重要度 | 理論的背景                         |
+| ------------ | ---------------------- | ------ | ---------------------------------- |
+| **type**     | アクセスタイプ         | ⭐⭐⭐ | データ取得の効率性を示す最重要指標 |
+| **rows**     | 検索対象行数           | ⭐⭐⭐ | I/Oコストの予測値                  |
 | **key**      | 使用されたインデックス | ⭐⭐⭐ | アクセスパスの効率性               |
 | **Extra**    | 付加情報               | ⭐⭐⭐ | 追加処理の有無とコスト             |
 | **filtered** | WHERE句での絞り込み率  | ⭐⭐   | セレクティビティの指標             |
@@ -1033,6 +1041,7 @@ EXPLAIN ANALYZE SELECT * FROM room_reservations WHERE guest_id = 1000;
 #### 5.2.2 typeの値の詳細解説（効率性順）
 
 **1. const（最高効率）**
+
 ```sql
 -- 主キーまたはユニークインデックスでの定数検索
 SELECT * FROM users WHERE id = 123;
@@ -1044,9 +1053,10 @@ SELECT * FROM users WHERE id = 123;
 ```
 
 **2. eq_ref（非常に高効率）**
+
 ```sql
 -- JOINでの主キー・ユニーク検索
-SELECT * FROM orders o 
+SELECT * FROM orders o
 JOIN users u ON o.user_id = u.id;
 
 理論的背景:
@@ -1056,6 +1066,7 @@ JOIN users u ON o.user_id = u.id;
 ```
 
 **3. ref（高効率）**
+
 ```sql
 -- 非ユニークインデックスでの等価検索
 SELECT * FROM orders WHERE status = 'pending';
@@ -1067,6 +1078,7 @@ SELECT * FROM orders WHERE status = 'pending';
 ```
 
 **4. range（中効率）**
+
 ```sql
 -- インデックスでの範囲検索
 SELECT * FROM orders WHERE order_date BETWEEN '2024-01-01' AND '2024-01-31';
@@ -1078,6 +1090,7 @@ SELECT * FROM orders WHERE order_date BETWEEN '2024-01-01' AND '2024-01-31';
 ```
 
 **5. index（低効率）**
+
 ```sql
 -- フルインデックススキャン
 SELECT id FROM orders ORDER BY id;
@@ -1089,6 +1102,7 @@ SELECT id FROM orders ORDER BY id;
 ```
 
 **6. ALL（最低効率）**
+
 ```sql
 -- フルテーブルスキャン
 SELECT * FROM orders WHERE description LIKE '%keyword%';
@@ -1102,6 +1116,7 @@ SELECT * FROM orders WHERE description LIKE '%keyword%';
 #### 5.2.3 Extraの重要な値の詳細解説
 
 **Using index（カバリングインデックス）**
+
 ```sql
 -- インデックスのみでクエリが完結
 SELECT user_id, order_date FROM orders WHERE user_id = 123;
@@ -1113,6 +1128,7 @@ SELECT user_id, order_date FROM orders WHERE user_id = 123;
 ```
 
 **Using where**
+
 ```sql
 -- インデックス後にWHERE条件を適用
 SELECT * FROM orders WHERE user_id = 123 AND amount > 1000;
@@ -1124,6 +1140,7 @@ SELECT * FROM orders WHERE user_id = 123 AND amount > 1000;
 ```
 
 **Using filesort（ソート処理）**
+
 ```sql
 -- ソート処理が必要
 SELECT * FROM orders ORDER BY amount DESC;
@@ -1135,6 +1152,7 @@ SELECT * FROM orders ORDER BY amount DESC;
 ```
 
 **Using temporary（一時テーブル）**
+
 ```sql
 -- 一時テーブルが必要
 SELECT user_id, COUNT(*) FROM orders GROUP BY user_id;
@@ -1160,6 +1178,7 @@ ORDER BY order_count DESC;
 ```
 
 **EXPLAIN出力の読み方：**
+
 ```
 実行計画の読み取りルール:
 1. idが同じ場合：上から下へ実行
