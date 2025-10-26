@@ -36,11 +36,11 @@ code/
 - [mvcc_demo.sql](postgresql/examples/mvcc_demo.sql) - MVCC動作確認
 
 ### 監視・分析
-- [log_analyzer.py](postgresql/monitoring/log_analyzer.py) - ログ分析ツール
+- [log_analyzer.go](postgresql/monitoring/log_analyzer.go) - ログ分析ツール
 
 ### マイグレーション
-- [mysql_to_postgresql.py](postgresql/migrations/mysql_to_postgresql.py) - MySQL → PostgreSQL
-- [mongodb_to_postgresql.py](postgresql/migrations/mongodb_to_postgresql.py) - MongoDB → PostgreSQL
+- [mysql_to_postgresql.go](postgresql/migrations/mysql_to_postgresql.go) - MySQL → PostgreSQL
+- [mongodb_to_postgresql.go](postgresql/migrations/mongodb_to_postgresql.go) - MongoDB → PostgreSQL
 
 ## 🐬 MySQL
 
@@ -50,8 +50,8 @@ code/
 ## ⚡ Redis
 
 ### 実装例
-- [session_manager.py](redis/examples/session_manager.py) - セッション管理システム
-- [sentinel_manager.py](redis/examples/sentinel_manager.py) - Sentinel管理システム
+- [session_manager.go](redis/examples/session_manager.go) - セッション管理システム
+- [sentinel_manager.go](redis/examples/sentinel_manager.go) - Sentinel管理システム
 
 ## 🍃 MongoDB
 
@@ -68,14 +68,43 @@ code/
 psql -f code/postgresql/examples/schema_design.sql
 ```
 
-### Python
+### Go
 ```bash
-python code/postgresql/monitoring/log_analyzer.py /var/log/postgresql.log
+# PostgreSQLログ分析
+go run code/postgresql/monitoring/log_analyzer.go /var/log/postgresql.log
+
+# MySQL → PostgreSQL マイグレーション
+go run code/postgresql/migrations/mysql_to_postgresql.go
+
+# MongoDB → PostgreSQL マイグレーション
+go run code/postgresql/migrations/mongodb_to_postgresql.go
+
+# Redisセッション管理
+go run code/redis/examples/session_manager.go
+
+# Redis Sentinel管理
+go run code/redis/examples/sentinel_manager.go
 ```
 
 ### JavaScript
 ```bash
 mongosh < code/mongodb/examples/document_design.js
+```
+
+## 📦 必要なGoパッケージ
+
+```bash
+# PostgreSQL関連
+go get github.com/lib/pq
+go get github.com/go-sql-driver/mysql
+
+# MongoDB関連
+go get go.mongodb.org/mongo-driver/mongo
+go get go.mongodb.org/mongo-driver/bson
+
+# Redis関連
+go get github.com/go-redis/redis/v8
+go get github.com/google/uuid
 ```
 
 ## 📝 ライセンス

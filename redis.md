@@ -374,7 +374,7 @@ redis> XREADGROUP GROUP processing consumer1 STREAMS events >
 
 ### 2.1 セッション管理システム
 
-📄 [session_manager.py](code/redis/examples/session_manager.py)
+📄 [session_manager.go](code/redis/examples/session_manager.go)
 
 ### 2.2 多階層キャッシュシステム
 
@@ -886,7 +886,7 @@ redis-cli --hotkeys            # アクセス頻度順（要設定）
 
 ### 4.1 Redis Sentinel（高可用性）
 
-📄 [sentinel_manager.py](code/redis/examples/sentinel_manager.py)
+📄 [sentinel_manager.go](code/redis/examples/sentinel_manager.go)
 
 ### 4.2 Redis Cluster（シャーディング）
 

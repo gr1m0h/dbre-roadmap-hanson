@@ -1199,11 +1199,11 @@ ANALYZE;
 
 #### 自動化マイグレーションスクリプト
 
-📄 [mysql_to_postgresql_migration.py](code/postgresql/migrations/mysql_to_postgresql.py)
+📄 [mysql_to_postgresql.go](code/postgresql/migrations/mysql_to_postgresql.go)
 
 ### 7.5 NoSQL → PostgreSQL マイグレーション
 
-📄 [mongodb_to_postgresql.py](code/postgresql/migrations/mongodb_to_postgresql.py)
+📄 [mongodb_to_postgresql.go](code/postgresql/migrations/mongodb_to_postgresql.go)
 
 ---
 
@@ -1323,7 +1323,7 @@ WHERE mean_exec_time > 100;  -- 100ms以上
 
 #### ログファイル分析スクリプト
 
-📄 [postgresql_log_analyzer.py](code/postgresql/monitoring/log_analyzer.py)
+📄 [log_analyzer.go](code/postgresql/monitoring/log_analyzer.go)
 
 #### pgBadger によるログ分析（推奨ツール）
 
