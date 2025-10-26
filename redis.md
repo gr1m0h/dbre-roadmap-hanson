@@ -34,45 +34,16 @@
 
 ## 🛠 必要な環境・ツール
 
-### 必須ツール
+> **PostgreSQL版と共通**: 基本的な環境構築（Terraform、k6、GCP等）は [PostgreSQL版](./postgresql.md) を参照してください。
 
-- **Google Cloud Platform アカウント**（無料クレジット利用可）
-- **Terraform** >= 1.0
-- **Git**
-- **k6** (負荷テストツール)
-- **Vim** (エディタ)
-- **Redis Client** (redis-cli)
-
-### インストール手順
+### Redis特有のツール
 
 ```bash
-# Terraform のインストール (macOS)
-brew install terraform
-
-# k6 のインストール
-brew install k6
-
-# Google Cloud SDK のインストール
-curl https://sdk.cloud.google.com | bash
-exec -l $SHELL
-gcloud init
-
 # Redis Client のインストール
 brew install redis
-```
 
-### Google Cloud プロジェクトの準備
-
-```bash
-# プロジェクトの作成
-gcloud projects create redis-dbre-training-[YOUR-ID]
-gcloud config set project redis-dbre-training-[YOUR-ID]
-
-# 必要なAPIの有効化
-gcloud services enable compute.googleapis.com
+# Redis用GCP API有効化
 gcloud services enable redis.googleapis.com
-gcloud services enable monitoring.googleapis.com
-gcloud services enable logging.googleapis.com
 ```
 
 ## 🏗 環境構築
@@ -403,94 +374,7 @@ redis> XREADGROUP GROUP processing consumer1 STREAMS events >
 
 ### 2.1 セッション管理システム
 
-```python
-#!/usr/bin/env python3
-# session_manager.py
-
-import redis
-import json
-import uuid
-from datetime import datetime, timedelta
-import hashlib
-
-class RedisSessionManager:
-    def __init__(self, redis_host, redis_port, default_ttl=3600):
-        self.redis_client = redis.Redis(
-            host=redis_host,
-            port=redis_port,
-            decode_responses=True
-        )
-        self.default_ttl = default_ttl
-
-    def create_session(self, user_id, user_data=None):
-        """セッション作成"""
-        session_id = str(uuid.uuid4())
-        session_key = f"session:{session_id}"
-
-        session_data = {
-            'user_id': user_id,
-            'created_at': datetime.now().isoformat(),
-            'last_accessed': datetime.now().isoformat(),
-            'data': user_data or {}
-        }
-
-        # セッションデータ保存（Hash使用）
-        self.redis_client.hset(session_key, mapping=session_data)
-        self.redis_client.expire(session_key, self.default_ttl)
-
-        # ユーザーのアクティブセッション管理（Set使用）
-        user_sessions_key = f"user_sessions:{user_id}"
-        self.redis_client.sadd(user_sessions_key, session_id)
-        self.redis_client.expire(user_sessions_key, self.default_ttl)
-
-        return session_id
-
-    def get_session(self, session_id):
-        """セッション取得"""
-        session_key = f"session:{session_id}"
-        session_data = self.redis_client.hgetall(session_key)
-
-        if not session_data:
-            return None
-
-        # 最終アクセス時刻更新
-        self.redis_client.hset(session_key, 'last_accessed', datetime.now().isoformat())
-        self.redis_client.expire(session_key, self.default_ttl)
-
-        return session_data
-
-    def update_session(self, session_id, data):
-        """セッションデータ更新"""
-        session_key = f"session:{session_id}"
-        self.redis_client.hset(session_key, 'data', json.dumps(data))
-        self.redis_client.expire(session_key, self.default_ttl)
-
-    def destroy_session(self, session_id):
-        """セッション削除"""
-        session_key = f"session:{session_id}"
-        session_data = self.redis_client.hgetall(session_key)
-
-        if session_data and 'user_id' in session_data:
-            user_sessions_key = f"user_sessions:{session_data['user_id']}"
-            self.redis_client.srem(user_sessions_key, session_id)
-
-        self.redis_client.delete(session_key)
-
-    def get_active_sessions_count(self):
-        """アクティブセッション数取得"""
-        pattern = "session:*"
-        return len(list(self.redis_client.scan_iter(match=pattern)))
-
-# 使用例
-session_manager = RedisSessionManager('redis-host', 6379)
-
-# セッション作成
-session_id = session_manager.create_session(1001, {'theme': 'dark', 'language': 'ja'})
-
-# セッション取得
-session_data = session_manager.get_session(session_id)
-print(f"Session data: {session_data}")
-```
+📄 [session_manager.py](code/redis/examples/session_manager.py)
 
 ### 2.2 多階層キャッシュシステム
 
@@ -1002,115 +886,7 @@ redis-cli --hotkeys            # アクセス頻度順（要設定）
 
 ### 4.1 Redis Sentinel（高可用性）
 
-```python
-#!/usr/bin/env python3
-# redis_sentinel_manager.py
-
-import redis.sentinel
-import logging
-import time
-from typing import List, Optional
-
-class RedisSentinelManager:
-    def __init__(self, sentinel_hosts: List[tuple], service_name: str = 'mymaster'):
-        """
-        Redis Sentinel接続管理
-
-        Args:
-            sentinel_hosts: [(host, port), ...] のリスト
-            service_name: Sentinelで管理されるサービス名
-        """
-        self.sentinel_hosts = sentinel_hosts
-        self.service_name = service_name
-        self.sentinel = redis.sentinel.Sentinel(sentinel_hosts)
-        self.logger = logging.getLogger(__name__)
-
-    def get_master(self):
-        """マスターRedis接続取得"""
-        try:
-            master = self.sentinel.master_for(
-                self.service_name,
-                socket_timeout=0.1,
-                password=None,
-                db=0
-            )
-            return master
-        except Exception as e:
-            self.logger.error(f"Master connection failed: {e}")
-            return None
-
-    def get_slave(self):
-        """スレーブRedis接続取得（読み取り専用）"""
-        try:
-            slave = self.sentinel.slave_for(
-                self.service_name,
-                socket_timeout=0.1,
-                password=None,
-                db=0
-            )
-            return slave
-        except Exception as e:
-            self.logger.error(f"Slave connection failed: {e}")
-            return None
-
-    def get_master_info(self):
-        """マスター情報取得"""
-        try:
-            return self.sentinel.discover_master(self.service_name)
-        except Exception as e:
-            self.logger.error(f"Master discovery failed: {e}")
-            return None
-
-    def get_slaves_info(self):
-        """スレーブ情報取得"""
-        try:
-            return self.sentinel.discover_slaves(self.service_name)
-        except Exception as e:
-            self.logger.error(f"Slaves discovery failed: {e}")
-            return []
-
-    def wait_for_master(self, timeout: int = 30):
-        """マスター復旧待機"""
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            master_info = self.get_master_info()
-            if master_info:
-                self.logger.info(f"Master available: {master_info}")
-                return True
-            time.sleep(1)
-
-        self.logger.error("Master not available within timeout")
-        return False
-
-# 使用例
-sentinel_hosts = [
-    ('sentinel1.example.com', 26379),
-    ('sentinel2.example.com', 26379),
-    ('sentinel3.example.com', 26379)
-]
-
-sentinel_manager = RedisSentinelManager(sentinel_hosts)
-
-# 読み書き分離
-def write_data(key, value):
-    master = sentinel_manager.get_master()
-    if master:
-        return master.set(key, value)
-    return False
-
-def read_data(key):
-    # 読み取りはスレーブから
-    slave = sentinel_manager.get_slave()
-    if slave:
-        return slave.get(key)
-
-    # スレーブが利用できない場合はマスターから
-    master = sentinel_manager.get_master()
-    if master:
-        return master.get(key)
-
-    return None
-```
+📄 [sentinel_manager.py](code/redis/examples/sentinel_manager.py)
 
 ### 4.2 Redis Cluster（シャーディング）
 
@@ -1991,9 +1767,4 @@ Redis は単なるキャッシュを超えて、**データ構造サーバー**�
 
 ---
 
-> **関連ハンズオン**
->
-> - [MySQL版ハンズオン](./mysql.md) - リレーショナルデータベース基礎
-> - [PostgreSQL版ハンズオン](./postgresql.md) - 高機能RDBMSの活用
-> - MongoDB版ハンズオン（予定）- ドキュメントデータベース
-> - Elasticsearch版ハンズオン（予定）- 検索・分析エンジン
+> **次のステップ**: [MongoDB ハンズオン](./mongodb.md) でドキュメント指向DBを学習

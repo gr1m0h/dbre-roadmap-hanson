@@ -1,144 +1,217 @@
-# DB実践編：MySQL
+# DB実践編：MySQL（PostgreSQL差分学習）
 
 ## 概要
 
-このドキュメントは、MySQLの本格的な運用・管理スキルを体系的に身につけるためのハンズオンガイドです。**「なぜこのクエリは遅いのか？」「どのようにスケールさせるべきか？」**といった実際の運用で直面する課題を、理論的背景とともに実践的に解決する能力を養います。
+このドキュメントは、**PostgreSQL を既に学習済みの方向け** に、MySQL 特有の機能と PostgreSQL との違いに焦点を当てた差分学習ガイドです。
 
-**なぜMySQL運用スキルが重要なのか？**
+> **前提知識**: [PostgreSQL ハンズオン](./postgresql.md) で RDBMS の基礎（MVCC、インデックス、クエリ最適化等）を習得済みであることを前提とします。
 
-- **システムの生命線**: データベースの性能がシステム全体の性能を左右する
-- **可用性の確保**: 障害対応とパフォーマンス問題の迅速な解決が必要
-- **スケーラビリティの実現**: 増大するデータとトラフィックに対応する設計判断
-- **コスト最適化**: 適切なリソース配分とインフラ設計でコストを削減
+**なぜ MySQL を学ぶのか？**
+
+- **実務での採用率が高い**: Web サービスでの採用実績が豊富
+- **PostgreSQL との違いを理解**: アーキテクチャの差異を知ることで RDBMS 全般の理解が深まる
+- **適材適所の判断**: プロジェクトに応じた DB 選定ができる
 
 **学習目標:**
 
-- MySQL 8.0の内部アーキテクチャの理解と実践的運用・管理スキル
-- パフォーマンスチューニングの理論的背景と実践的手法
-- インフラストラクチャー・アズ・コードによるスケーラブルなDB構築
-- 負荷テストとベンチマークによる性能評価手法
-- バージョンアップとマイグレーションの安全な実践
-- 監視とトラブルシューティングの体系的アプローチ
+- PostgreSQL と MySQL のアーキテクチャの違いを理解
+- InnoDB ストレージエンジンの特性を理解
+- MySQL 特有のレプリケーション方式を習得
+- PostgreSQL からの移行ポイントを把握
+
+## 🔄 PostgreSQL vs MySQL - 主要な違い
+
+### アーキテクチャ比較
+
+| 項目 | PostgreSQL | MySQL (InnoDB) | 学習のポイント |
+|------|------------|----------------|---------------|
+| **並行制御** | MVCC (タプルバージョン管理) | MVCC + Undo Log | PostgreSQL は Dead Tuple、MySQL は Undo Log による実装差 |
+| **ストレージ** | 単一アーキテクチャ | プラガブルストレージエンジン | InnoDB, MyISAM 等の選択可能性 |
+| **レプリケーション** | ロジカル/物理レプリケーション | バイナリログベース | MySQL は Statement/Row/Mixed 形式 |
+| **トランザクション分離** | 4レベル完全対応 | 4レベル対応（実装差あり） | Repeatable Read のデフォルト動作が異なる |
+| **インデックス** | B-tree, GIN, GiST, BRIN等 | B+tree（主）, Full-text, Spatial | PostgreSQL の方が多様だが、MySQL も基本は網羅 |
+| **JSONB** | ネイティブ JSONB（高速） | JSON 型（PostgreSQL より低速） | PostgreSQL の JSONB が優位 |
+| **全文検索** | ネイティブ対応（tsvector） | FULLTEXT INDEX | 実装方式が異なる |
+| **拡張機能** | 豊富な拡張（PostGIS等） | プラグイン（限定的） | PostgreSQL の方が拡張性高い |
+| **SQL方言** | 標準SQL準拠度高い | 独自拡張多い | 文法の細かい違いあり |
+
+### ロック機構の違い
+
+```sql
+-- PostgreSQL: MVCC により読み取りはブロックされない
+-- セッション1
+BEGIN;
+UPDATE rooms SET price = 15000 WHERE id = 1;
+-- まだ COMMIT していない
+
+-- セッション2（別セッション）
+SELECT * FROM rooms WHERE id = 1;  -- ブロックされない（古いバージョンが見える）
+
+-- MySQL (InnoDB): 同様に MVCC で対応（ただし Undo Log 方式）
+-- セッション1
+START TRANSACTION;
+UPDATE rooms SET price = 15000 WHERE id = 1;
+
+-- セッション2
+SELECT * FROM rooms WHERE id = 1;  -- ブロックされない（Undo Log から読み取り）
+
+-- 違いは内部実装:
+-- PostgreSQL → Dead Tuple が残り、VACUUM で回収
+-- MySQL → Undo Log に保持、Purge スレッドで削除
+```
+
+### デフォルト動作の違い
+
+```sql
+-- PostgreSQL: トランザクション分離レベルは READ COMMITTED
+SHOW transaction_isolation;
+-- read committed
+
+-- MySQL: デフォルトは REPEATABLE READ
+SELECT @@transaction_isolation;
+-- REPEATABLE-READ
+
+-- PostgreSQL: AUTO_INCREMENT に相当
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,  -- PostgreSQL
+    name VARCHAR(100)
+);
+
+-- MySQL: AUTO_INCREMENT
+CREATE TABLE users (
+    id INT AUTO_INCREMENT PRIMARY KEY,  -- MySQL
+    name VARCHAR(100)
+);
+
+-- PostgreSQL: 文字列連結
+SELECT 'Hello' || ' ' || 'World';  -- PostgreSQL
+
+-- MySQL: 文字列連結（複数の方法）
+SELECT CONCAT('Hello', ' ', 'World');  -- MySQL 推奨
+-- または
+SET sql_mode = 'PIPES_AS_CONCAT';
+SELECT 'Hello' || ' ' || 'World';  -- PostgreSQL互換モード
+```
 
 ## 🛠 必要な環境・ツール
 
-### 必須ツール
-
-- **Google Cloud Platform アカウント**（無料クレジット利用可）
-- **Terraform** >= 1.0
-- **Git**
-- **k6** (負荷テストツール)
-- **Vim** (エディタ)
-
-### インストール手順
+> **PostgreSQL版と共通**: 環境構築は [PostgreSQL版](./postgresql.md) を参照してください。MySQL特有の設定のみ以下に記載します。
 
 ```bash
-# Terraform のインストール (macOS)
-brew install terraform
+# MySQL Client のインストール
+brew install mysql-client
 
-# k6 のインストール
-brew install k6
-
-# Google Cloud SDK のインストール
-curl https://sdk.cloud.google.com | bash
-exec -l $SHELL
-gcloud init
-```
-
-### Google Cloud プロジェクトの準備
-
-```bash
-# プロジェクトの作成
-gcloud projects create mysql-dbre-training-[YOUR-ID]
-gcloud config set project mysql-dbre-training-[YOUR-ID]
-
-# 必要なAPIの有効化
-gcloud services enable compute.googleapis.com
+# Cloud SQL MySQL 用の設定
 gcloud services enable sqladmin.googleapis.com
-gcloud services enable monitoring.googleapis.com
-gcloud services enable logging.googleapis.com
 ```
 
-## 📚 第1章: MySQL基礎とインデックス理論
+## 📚 第1章: MySQL特有の機能とPostgreSQL差分
 
-### 1.1 なぜインデックスが重要なのか？
+> **PostgreSQL で学習済みの内容**: B-tree インデックス、MVCC、トランザクション分離レベルは [PostgreSQL ハンズオン](./postgresql.md) で既習。ここでは MySQL 特有の内容のみ扱います。
 
-データベースのパフォーマンスを理解する上で、インデックスの仕組みを深く理解することは不可欠です。**「なぜこのクエリは遅いのか？」**という質問に答えるためには、データがどのように格納され、検索されるかを知る必要があります。
+### 1.1 InnoDB ストレージエンジンの特性
 
-**インデックスなしでのデータ検索：**
+#### ストレージエンジンの選択可能性（PostgreSQL との大きな違い）
 
-```
-SELECT * FROM users WHERE user_id = 12345;
+```sql
+-- MySQL: ストレージエンジン選択可能
+CREATE TABLE users_innodb (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100)
+) ENGINE=InnoDB;  -- トランザクション対応
 
-全行を順次スキャン（テーブルスキャン）:
-┌─────────────────────────────────────────────────────┐
-│ 行1: user_id=1     → 不一致、次へ                 │
-│ 行2: user_id=2     → 不一致、次へ                 │
-│ 行3: user_id=3     → 不一致、次へ                 │
-│ ...                                                 │
-│ 行12345: user_id=12345 → 一致！                   │
-│ ...                                                 │
-│ 行100万: user_id=1000000 → 不一致                 │
-└─────────────────────────────────────────────────────┘
+CREATE TABLE temp_data (
+    id INT,
+    data TEXT
+) ENGINE=MyISAM;  -- 高速だがトランザクション非対応
 
-計算量: O(n) - 最悪の場合、全行をチェック
-I/O回数: 全データページ（例：10,000ページ = 10,000回のI/O）
-```
+CREATE TABLE memory_cache (
+    key_name VARCHAR(50) PRIMARY KEY,
+    value TEXT
+) ENGINE=MEMORY;  -- インメモリ
 
-**インデックスありでのデータ検索：**
-
-```
-SELECT * FROM users WHERE user_id = 12345;
-
-B+木インデックスを使用:
-┌─────────────────────────────────────────────────────┐
-│ 1. ルートノードから開始（1回目のI/O）              │
-│ 2. 中間ノードをたどる（2回目のI/O）                │
-│ 3. リーフノードで該当キーを発見（3回目のI/O）      │
-│ 4. データページに直接アクセス（4回目のI/O）        │
-└─────────────────────────────────────────────────────┘
-
-計算量: O(log n) - 対数的に増加
-I/O回数: 3-4回（データ量によらず一定）
+-- PostgreSQL: ストレージエンジンの選択概念なし（単一アーキテクチャ）
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100)
+);  -- 常に MVCC 対応
 ```
 
-**性能差の実例：**
+**InnoDB vs MyISAM 比較**
 
-- 100万行のテーブルの場合
-- インデックスなし：平均50万回のレコード比較
-- インデックスあり：平均20回のレコード比較（2,500倍高速）
+| 機能 | InnoDB | MyISAM | PostgreSQL |
+|------|--------|--------|------------|
+| トランザクション | ✅ | ❌ | ✅ |
+| MVCC | ✅ | ❌ | ✅ |
+| 外部キー | ✅ | ❌ | ✅ |
+| 行ロック | ✅ | テーブルロックのみ | ✅（MVCC） |
+| 全文検索 | ✅ (5.6+) | ✅ | ✅（tsvector） |
+| 用途 | 本番DB | 一時データ、読み取り専用 | すべて |
 
-### 1.2 B+木インデックスの内部構造
+#### Clustered Index（クラスタインデックス）
 
-#### なぜB+木なのか？
+**PostgreSQL との最大の違い:**
 
-従来の二分探索木では、データベースに最適化されていない問題がありました：
+```sql
+-- MySQL InnoDB: PRIMARY KEY = Clustered Index
+CREATE TABLE rooms (
+    id INT AUTO_INCREMENT PRIMARY KEY,  -- これがデータ格納順序を決定
+    room_number VARCHAR(10),
+    price DECIMAL(10,2)
+);
 
-**二分探索木の問題点：**
+-- PostgreSQL: ヒープテーブル（挿入順に格納）
+CREATE TABLE rooms (
+    id SERIAL PRIMARY KEY,  -- インデックスは別構造
+    room_number VARCHAR(10),
+    price DECIMAL(10,2)
+);
+```
+
+**Clustered Index の仕組み:**
 
 ```
-二分探索木（各ノード2分岐）:
-        50
-       /  \
-     25    75
-    /  \   /  \
-   12  37 62  87
-  /  \
- 6   18
+MySQL InnoDB:
+PRIMARY KEY = Clustered Index（データ本体を含む）
 
-問題:
-- 深さ: log₂(n) ≈ 20層（100万レコードの場合）
-- 各ノードアクセス = 1回のディスクI/O
-- 最大20回のI/O が必要
-- ノード分割時の複雑さ
+        [id=50]  ← B+tree ルート
+       /        \
+  [id=25]       [id=75]  ← 中間ノード
+   /    \         /    \
+[id=1-24] [id=25-49] [id=50-74] [id=75-100]  ← リーフノード（実データを含む）
+ ┌──────────┐
+ │id=25     │
+ │name='...'│  ← 実際のデータがリーフに格納
+ │price=...│
+ └──────────┘
+
+PostgreSQL:
+PRIMARY KEY = 通常の B-tree Index
+
+        [id=50, pointer]  ← B+tree
+       /        \
+  [id=25, ptr] [id=75, ptr]
+   
+   リーフノードはポインタのみ
+   実データはヒープ領域に別途格納
 ```
 
-**B+木の改善点：**
+**セカンダリインデックスの違い:**
 
-```
-B+木（各ノード多分岐、例：100分岐）:
-ルートノード:
-[10|20|30|40|50|60|70|80|90]
+```sql
+-- MySQL: セカンダリインデックスは PRIMARY KEY を含む
+CREATE INDEX idx_room_number ON rooms (room_number);
+
+-- 内部構造:
+-- room_number → PRIMARY KEY (id) → データ
+-- 2段階アクセスが必要
+
+-- PostgreSQL: セカンダリインデックスは TID (Tuple ID) を含む
+CREATE INDEX idx_room_number ON rooms (room_number);
+
+-- 内部構造:
+-- room_number → TID → データ
+-- 同様に2段階だが、TID は固定長で高速
  ↓  ↓  ↓  ↓  ↓  ↓  ↓  ↓  ↓
       子ノード群（最大100個）
 
