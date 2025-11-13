@@ -1,0 +1,115 @@
+version: '3.8'
+
+services:
+  # Primary PostgreSQL server
+  postgres-primary:
+    image: postgres:15-alpine
+    container_name: postgres-primary
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_password
+      POSTGRES_DB: training_db
+      POSTGRES_REPLICATION_MODE: master
+      POSTGRES_REPLICATION_USER: replicator
+      POSTGRES_REPLICATION_PASSWORD: repl_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_primary_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+      - ./config/primary:/etc/postgresql
+    command: >
+      postgres
+      -c config_file=/etc/postgresql/postgresql.conf
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Standby PostgreSQL server (read replica)
+  postgres-standby:
+    image: postgres:15-alpine
+    container_name: postgres-standby
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_password
+      PGUSER: postgres
+      POSTGRES_MASTER_SERVICE: postgres-primary
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_standby_data:/var/lib/postgresql/data
+      - ./config/standby:/etc/postgresql
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    command: >
+      bash -c "
+      rm -rf /var/lib/postgresql/data/* &&
+      pg_basebackup -h postgres-primary -D /var/lib/postgresql/data -U replicator -v -P -W -R &&
+      echo 'repl_password' | postgres -c config_file=/etc/postgresql/postgresql.conf
+      "
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # pgAdmin for PostgreSQL management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: postgres-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin_password
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "8080:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./pgadmin/servers.json:/pgadmin4/servers.json
+    depends_on:
+      - postgres-primary
+      - postgres-standby
+
+  # pgBouncer connection pooler
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: postgres-pgbouncer
+    environment:
+      DATABASES_HOST: postgres-primary
+      DATABASES_PORT: 5432
+      DATABASES_USER: postgres
+      DATABASES_PASSWORD: postgres_password
+      DATABASES_DBNAME: training_db
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 100
+      DEFAULT_POOL_SIZE: 25
+    ports:
+      - "6432:6432"
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+
+  # pg_stat_monitor for advanced monitoring
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: postgres-exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://postgres:postgres_password@postgres-primary:5432/training_db?sslmode=disable"
+    ports:
+      - "9187:9187"
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+
+volumes:
+  postgres_primary_data:
+  postgres_standby_data:
+  pgadmin_data:
+
+networks:
+  default:
+    name: postgres-network
+    driver: bridge

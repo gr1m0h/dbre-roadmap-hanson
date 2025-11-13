@@ -1,0 +1,226 @@
+version: '3.8'
+
+services:
+  # Redis Master
+  redis-master:
+    image: redis:7-alpine
+    container_name: redis-master
+    command: >
+      redis-server
+      --port 6379
+      --requirepass redis_password
+      --masterauth redis_password
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+      --appendfsync everysec
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+      --tcp-keepalive 60
+      --timeout 300
+      --databases 16
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_master_data:/data
+      - ./config/redis-master.conf:/usr/local/etc/redis/redis.conf
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis_password", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Redis Slave 1
+  redis-slave1:
+    image: redis:7-alpine
+    container_name: redis-slave1
+    command: >
+      redis-server
+      --port 6379
+      --slaveof redis-master 6379
+      --masterauth redis_password
+      --requirepass redis_password
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+      --appendfsync everysec
+      --tcp-keepalive 60
+      --timeout 300
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_slave1_data:/data
+    depends_on:
+      redis-master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis_password", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Redis Slave 2
+  redis-slave2:
+    image: redis:7-alpine
+    container_name: redis-slave2
+    command: >
+      redis-server
+      --port 6379
+      --slaveof redis-master 6379
+      --masterauth redis_password
+      --requirepass redis_password
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+      --appendfsync everysec
+      --tcp-keepalive 60
+      --timeout 300
+    ports:
+      - "6381:6379"
+    volumes:
+      - redis_slave2_data:/data
+    depends_on:
+      redis-master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis_password", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Redis Sentinel 1
+  redis-sentinel1:
+    image: redis:7-alpine
+    container_name: redis-sentinel1
+    command: >
+      redis-sentinel /etc/redis/sentinel.conf
+    ports:
+      - "26379:26379"
+    volumes:
+      - ./config/sentinel1.conf:/etc/redis/sentinel.conf
+      - redis_sentinel1_data:/data
+    depends_on:
+      redis-master:
+        condition: service_healthy
+      redis-slave1:
+        condition: service_healthy
+      redis-slave2:
+        condition: service_healthy
+
+  # Redis Sentinel 2
+  redis-sentinel2:
+    image: redis:7-alpine
+    container_name: redis-sentinel2
+    command: >
+      redis-sentinel /etc/redis/sentinel.conf
+    ports:
+      - "26380:26379"
+    volumes:
+      - ./config/sentinel2.conf:/etc/redis/sentinel.conf
+      - redis_sentinel2_data:/data
+    depends_on:
+      redis-master:
+        condition: service_healthy
+      redis-slave1:
+        condition: service_healthy
+      redis-slave2:
+        condition: service_healthy
+
+  # Redis Sentinel 3
+  redis-sentinel3:
+    image: redis:7-alpine
+    container_name: redis-sentinel3
+    command: >
+      redis-sentinel /etc/redis/sentinel.conf
+    ports:
+      - "26381:26379"
+    volumes:
+      - ./config/sentinel3.conf:/etc/redis/sentinel.conf
+      - redis_sentinel3_data:/data
+    depends_on:
+      redis-master:
+        condition: service_healthy
+      redis-slave1:
+        condition: service_healthy
+      redis-slave2:
+        condition: service_healthy
+
+  # Redis for Pub/Sub
+  redis-pubsub:
+    image: redis:7-alpine
+    container_name: redis-pubsub
+    command: >
+      redis-server
+      --port 6379
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --notify-keyspace-events AKE
+      --timeout 0
+    ports:
+      - "6382:6379"
+    volumes:
+      - redis_pubsub_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # RedisInsight - Redis GUI
+  redisinsight:
+    image: redislabs/redisinsight:latest
+    container_name: redis-insight
+    ports:
+      - "8001:8001"
+    volumes:
+      - redisinsight_data:/db
+    depends_on:
+      - redis-master
+      - redis-slave1
+      - redis-slave2
+      - redis-pubsub
+
+  # Redis Exporter for Prometheus
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: redis-exporter
+    environment:
+      REDIS_ADDR: "redis://redis-master:6379"
+      REDIS_PASSWORD: "redis_password"
+    ports:
+      - "9121:9121"
+    depends_on:
+      redis-master:
+        condition: service_healthy
+
+  # Redis Commander - Web UI
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: redis-commander
+    environment:
+      - REDIS_HOST=redis-master
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=redis_password
+      - HTTP_USER=admin
+      - HTTP_PASSWORD=admin_password
+    ports:
+      - "8081:8081"
+    depends_on:
+      redis-master:
+        condition: service_healthy
+
+volumes:
+  redis_master_data:
+  redis_slave1_data:
+  redis_slave2_data:
+  redis_sentinel1_data:
+  redis_sentinel2_data:
+  redis_sentinel3_data:
+  redis_pubsub_data:
+  redisinsight_data:
+
+networks:
+  default:
+    name: redis-network
+    driver: bridge

@@ -1,0 +1,117 @@
+version: '3.8'
+
+services:
+  # PostgreSQL for basic theory examples
+  postgres:
+    image: postgres:15-alpine
+    container_name: basic-theory-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_password
+      POSTGRES_DB: basic_theory_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d
+    command: >
+      postgres
+      -c shared_buffers=256MB
+      -c effective_cache_size=1GB
+      -c maintenance_work_mem=64MB
+      -c checkpoint_completion_target=0.9
+      -c wal_buffers=16MB
+      -c default_statistics_target=100
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+      -c work_mem=4MB
+      -c min_wal_size=1GB
+      -c max_wal_size=4GB
+      -c max_worker_processes=8
+      -c max_parallel_workers_per_gather=2
+      -c max_parallel_workers=8
+      -c logging_collector=on
+      -c log_statement=all
+      -c log_duration=on
+      -c log_min_duration_statement=1000
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # MySQL for basic theory examples
+  mysql:
+    image: mysql:8.0
+    container_name: basic-theory-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: basic_theory_db
+      MYSQL_USER: mysql_user
+      MYSQL_PASSWORD: mysql_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql-init:/docker-entrypoint-initdb.d
+    command: >
+      mysqld
+      --innodb-buffer-pool-size=512M
+      --innodb-log-file-size=256M
+      --innodb-flush-log-at-trx-commit=1
+      --innodb-flush-method=O_DIRECT
+      --innodb-file-per-table=1
+      --binlog-format=ROW
+      --log-bin=mysql-bin
+      --server-id=1
+      --slow-query-log=1
+      --slow-query-log-file=/var/log/mysql/slow.log
+      --long-query-time=1
+      --log-queries-not-using-indexes=1
+      --general-log=1
+      --general-log-file=/var/log/mysql/general.log
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # phpMyAdmin for MySQL management
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: basic-theory-phpmyadmin
+    environment:
+      PMA_HOST: mysql
+      PMA_USER: root
+      PMA_PASSWORD: root_password
+      UPLOAD_LIMIT: 300M
+    ports:
+      - "8080:80"
+    depends_on:
+      - mysql
+
+  # pgAdmin for PostgreSQL management
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: basic-theory-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin_password
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+    ports:
+      - "8081:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+
+volumes:
+  postgres_data:
+  mysql_data:
+  pgadmin_data:
+
+networks:
+  default:
+    name: basic-theory-network
+    driver: bridge
